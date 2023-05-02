@@ -105,7 +105,7 @@ class Node:
         node_json = json.dumps(obj.__dict__, default=dict)
         return node_json
     
-    def add_node(self, nodes, follower_count,  is_full_node, certificate, device_id, authority_nodes, primary_index):
+    def add_node(self, nodes, follower_count,  is_full_node, certificate, device_id, primary_index):
         if self.reputation != 0:
             raise Exception("Node already added")
         
@@ -118,7 +118,7 @@ class Node:
 
         # These lists store the indices if they voted
         follower_node_indices = []
-        auth_vote, authority_node_indices = authority_voting(nodes, primary_index, authority_nodes)
+        auth_vote, authority_node_indices = authority_voting(nodes)
         
         if auth_vote == None:
             return None
@@ -218,8 +218,7 @@ def penalize_primary(nodes, index, follower_count):
             logger.info("The Authority Node has fell below the threshold and has been removed from the network")
             follower_count -= 1
 
-def authority_voting(nodes, primary_index, authority_nodes):
-    print(primary_index)
+def authority_voting(nodes):
     authority_node_votes = {}
     votes_true = 0
     votes_false = 0
@@ -302,14 +301,14 @@ if __name__ == '__main__':
         node = Node()
         logger.debug(f"Authority node device IDs {get_authority_device_ids(nodes)}")
         authority_nodes = get_authority_device_ids(nodes)
-        print(authority_nodes)
+        # print(authority_nodes)
         primary_index = get_primary() % len(authority_nodes)
         # print(primary_index)
         set_primary(primary_index + 1)
         authority_result = authority_verify(primary_index, cert_data)
         
         try:
-            node.add_node(nodes, follower_count, full_node, cert_data, device_id, authority_nodes, primary_index)
+            node.add_node(nodes, follower_count, full_node, cert_data, device_id, primary_index)
             # logger.info(node.display_node())
         except Exception as e:
             logger.error(e)
