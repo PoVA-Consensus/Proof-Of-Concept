@@ -6,6 +6,8 @@ import argparse
 import logging
 import datetime
 import os
+import random
+from collections import Counter
 
 # Set the logging level to debug
 class ColourLogs(logging.Formatter):
@@ -106,6 +108,20 @@ class Node:
         return node_json
     
     def add_node(self, nodes, follower_count,  is_full_node, certificate, device_id, primary_index):
+        """
+        This function adds a new node to the network.
+
+        Args:
+            nodes (Dict): A registry that contains details of nodes that have been added to the network.
+            follower_count (int): The number of follower nodes.
+            is_full_node (bool): A boolean indicating whether the new node is a full node or not.
+            certificate (str): The certificate of the new node.
+            device_id (str): The unique identifier of the device.
+            primary_index (int): The index of the primary node.
+
+        Returns:
+            bool: True if adding the node is successful else False.
+        """
         if self.reputation != 0:
             raise Exception("Node already added")
         
@@ -121,7 +137,7 @@ class Node:
         auth_vote, authority_node_indices = authority_voting(nodes)
         
         if auth_vote == None:
-            return None
+            return False
 
         for node_id, node_data in nodes.items():
 
@@ -149,12 +165,11 @@ class Node:
         else:
             logger.info("Node cannot be added as majority vote not attained")
 
-        
-
         self.penalize_authority(nodes, authority_node_indices)
         self.reward_follower_nodes(nodes, follower_node_indices)
         
         self.update_reputation_by_authority_index(nodes, primary_index)
+        return True
         # logger.debug(authority_node_indices)
 
     def check_votes(self, votes, all_auth_nodes):
@@ -206,7 +221,7 @@ def authority_verify(index, cert_data):
     # logger.info(verify_response.text)
     return verify_response.text
 
-def get_authority_device_ids(nodes):
+def get_authority_indices(nodes):
     return [node_id for node_id, node_data in nodes.items() if node_data["is_authority"]]
 
 
@@ -250,6 +265,58 @@ def authority_voting(nodes):
         return votes_true > len(authority_node_votes) // 2, authority_node_votes.keys()
     return None, []           
 
+def remove_primary_entry(votes, primary_index):
+    # Need this function to ensure that primary node entry is not set to false
+    items = list(votes.items())
+    del items[primary_index]
+    return dict(items)
+
+def network_noise_simulation(authority_indices, votes, primary_index):
+    noise_ratio = round(random.uniform(0.3, 0.7), 4)
+    logger.info(f"There is a network noise of {noise_ratio * 100}%")
+    noise_threshold = len(authority_indices) * noise_ratio    # Setting a noise factor
+    votes = remove_primary_entry(votes, primary_index)
+    entries = list(votes.items())  # Convert the dictionary into a list of tuples
+    random.shuffle(entries)  # Random shuffling
+
+    for i in range(int(noise_threshold)):
+        number, _ = entries[i]  
+        votes[number] = False  
+    logger.debug(f"Noised authority nodes {votes}")
+    return votes
+
+def authority_broadcast_consensus(votes):
+    votes_counts = Counter(votes.values())
+    return votes_counts.most_common(1)[0][0]
+
+def broadcast_authority(authority_indices, primary_index):
+    votes = {}
+    for authority in authority_indices:
+        votes[authority] = True
+    votes = network_noise_simulation(authority_indices, votes, primary_index)
+    consensus_vote = authority_broadcast_consensus(votes)
+    logger.info(f"Consensus vote is {consensus_vote}")
+    votes[authority_indices[primary_index]] = True
+    logger.debug(f"After adding primary vote {votes}")
+
+def broadcast_followers(nodes, primary_index, authority_nodes):
+    noise_ratio = round(random.uniform(0.3, 0.7), 4)
+    logger.info(f"Network noise in propagating to follower nodes {noise_ratio * 100}")
+    follower_nodes_votes = {}
+    for node_id, node_data in nodes.items():
+        if node_data["is_full_node"] and node_id != authority_nodes[primary_index]:
+            follower_nodes_votes[node_id] = True
+    
+    noise_threshold = len(follower_nodes_votes) * noise_ratio 
+    entries = list(follower_nodes_votes.items())  
+    random.shuffle(entries)  # Random shuffling
+
+    for i in range(int(noise_threshold)):
+        number, _ = entries[i]  
+        follower_nodes_votes[number] = False  
+    # print(follower_nodes_votes)
+
+
 genesis_block = Block(0,  str(_dt.datetime.now()), "Genesis Block",0)
 
 block_exists = {}
@@ -263,11 +330,12 @@ block_hashes[0] = genesis_block.hash
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='This simulates the Proof of Concept for the blockchain with Proof of Verified Authority Consensus')
 
-    parser.add_argument('--method', type=str, choices=['add', 'remove', 'viewnode'], help='This argument facilitates choosing the action on a node')
+    parser.add_argument('--method', type=str, choices=['add', 'remove', 'viewnode', 'broadcast'], help='This argument facilitates choosing the action on a node')
     parser.add_argument('--certificate', type=str, help='The argument enables you to specify the path to the device certificate file')
     parser.add_argument('--fullnode', action='store_true', help='This is a flag to indicate if the device is a full node')
     parser.add_argument('--deviceid', type=str, help='This argument specifies the device ID')
     parser.add_argument('--node', type=int, help='This argument specifies the node index for the viewnode method')
+    parser.add_argument('--state', type=str, help='This argument specifies the path to payload file containing the state')
 
     # parse arguments
     args = parser.parse_args()
@@ -278,11 +346,13 @@ if __name__ == '__main__':
     nodes = {
             0: {"is_authority": False, "is_full_node": True, "reputation": 900, "certificate": "cert", "device_id": 49, "promote_count": 1},
             1: {"is_authority": True, "is_full_node": True, "reputation": 1200, "certificate": "cert", "device_id": 44, "promote_count": 1},
-            2: {"is_authority": False, "is_full_node": True, "reputation": 750, "certificate": "cert", "device_id": 45, "promote_count": 0},
+            2: {"is_authority": True, "is_full_node": True, "reputation": 1750, "certificate": "cert", "device_id": 45, "promote_count": 1},
             3: {"is_authority": True, "is_full_node": True, "reputation": 1500, "certificate": "cert", "device_id": 54, "promote_count": 1},
             4: {"is_authority": False, "is_full_node": False, "reputation": 50, "certificate": "cert", "device_id": 79, "promote_count": 0},
+            5: {"is_authority": True, "is_full_node": True, "reputation": 2550, "certificate": "cert", "device_id": 99, "promote_count": 1},
             }
-    
+    authority_nodes = get_authority_indices(nodes)
+
     if method == 'add':
 
         certificate_path = args.certificate        
@@ -299,8 +369,8 @@ if __name__ == '__main__':
                 cert_data = cert_file.read()
 
         node = Node()
-        logger.debug(f"Authority node device IDs {get_authority_device_ids(nodes)}")
-        authority_nodes = get_authority_device_ids(nodes)
+        logger.debug(f"Authority node device IDs {get_authority_indices(nodes)}")
+        
         # print(authority_nodes)
         primary_index = get_primary() % len(authority_nodes)
         # print(primary_index)
@@ -316,5 +386,22 @@ if __name__ == '__main__':
     elif method == 'viewnode':
         node_num = args.node
         logger.info(json.dumps(nodes[node_num], indent=4))
+
+    elif method == 'broadcast':
+        state_path = args.state
+        if state_path == None:
+            logger.error("The state payload file is missing")
+        try:
+            with open(state_path, "r") as state_file:
+                state = state_file.read()
+
+            primary_index = get_primary() % len(authority_nodes)
+            print(primary_index)
+            set_primary(primary_index + 1)
+            logger.debug(authority_nodes)
+            broadcast_authority(authority_nodes, primary_index)
+            broadcast_followers(nodes, primary_index, authority_nodes)
+        except Exception as e:
+            logger.error(e)
     # logger.debug(json.dumps(nodes, indent=4))
     # print(block_hashes)
