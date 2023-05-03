@@ -1,6 +1,6 @@
 import hashlib
 import json
-import datetime as _dt
+import time
 import requests
 import argparse
 import logging
@@ -8,32 +8,9 @@ import datetime
 import os
 import random
 from collections import Counter
+import ast
 
-# Set the logging level to debug
-class ColourLogs(logging.Formatter):
-    grey = '\x1b[38;21m'
-    green = '\033[92m'
-    yellow = '\x1b[38;5;226m'
-    red = '\x1b[38;5;196m'
-    bold_red = '\x1b[31;1m'
-    reset = '\x1b[0m'
-    blue = '\033[34m'
-
-    def __init__(self, fmt):
-        super().__init__()
-        self.fmt = fmt
-        self.FORMATS = {
-            logging.DEBUG: self.blue + self.fmt + self.reset,
-            logging.INFO: self.green + self.fmt + self.reset,
-            logging.WARNING: self.yellow + self.fmt + self.reset,
-            logging.ERROR: self.red + self.fmt + self.reset,
-            logging.CRITICAL: self.bold_red + self.fmt + self.reset
-        }
-
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno)
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
+from Colour import ColourLogs
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -56,6 +33,10 @@ file_handler.setFormatter(logging.Formatter(fmt))
 logger.addHandler(stdout_handler)
 logger.addHandler(file_handler)
 
+import json
+import hashlib
+from datetime import datetime
+
 class Block:
     def __init__(self, index, timestamp, data, previous_hash):
         self.index = index
@@ -76,9 +57,57 @@ class Block:
 
         return hashlib.sha256(block_string).hexdigest()
 
-    def display_block(obj):
-        block_json = json.dumps(obj.__dict__, default=dict)
-        return block_json
+    def display_block(self):
+        return {
+            "index": self.index,
+            "timestamp": self.timestamp,
+            "data": self.data,
+            "previous_hash": self.previous_hash,
+            "hash": self.hash
+        }
+
+class Blockchain:
+    def __init__(self, chain_file='chain.json', transaction_file='transaction.json'):
+        self.chain_file = chain_file
+        self.transaction_file = transaction_file
+
+        try:
+            with open(self.chain_file, 'r') as f:
+                self.chain = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.chain = []
+            self.create_genesis_block()
+
+    def create_genesis_block(self):
+        index = 0
+        timestamp = str(datetime.now())
+        data = "Genesis Block"
+        previous_hash = ''
+
+        genesis_block = Block(index, timestamp, data, previous_hash)
+        self.chain.append(genesis_block.display_block())
+
+        with open(self.chain_file, 'w') as f:
+            json.dump(self.chain, f)
+
+    def add_block(self, data):
+        previous_block = self.chain[-1]
+        previous_hash = previous_block['hash']
+        index = previous_block['index'] + 1
+        timestamp = str(datetime.now())
+
+        new_block = Block(index, timestamp, data, previous_hash)
+        if new_block.previous_hash == previous_hash:
+            self.chain.append(new_block.display_block())
+            with open(self.chain_file, 'w') as f:
+                json.dump(self.chain, f)
+            return True
+        else:
+            return False
+
+    def display_chain(self):
+        return self.chain
+
 
 nodes = {}
 authority_nodes = {}
@@ -273,59 +302,73 @@ def remove_primary_entry(votes, primary_index):
 
 def network_noise_simulation(authority_indices, votes, primary_index):
     noise_ratio = round(random.uniform(0.3, 0.7), 4)
-    logger.info(f"There is a network noise of {noise_ratio * 100}%")
+    logger.info(f"There is a network noise of {round((noise_ratio * 100), 4)}%")
     noise_threshold = len(authority_indices) * noise_ratio    # Setting a noise factor
     votes = remove_primary_entry(votes, primary_index)
     entries = list(votes.items())  # Convert the dictionary into a list of tuples
     random.shuffle(entries)  # Random shuffling
-
     for i in range(int(noise_threshold)):
         number, _ = entries[i]  
         votes[number] = False  
     logger.debug(f"Noised authority nodes {votes}")
     return votes
 
-def authority_broadcast_consensus(votes):
+def broadcast_majority_count(votes):
     votes_counts = Counter(votes.values())
-    return votes_counts.most_common(1)[0][0]
+    # get the most common boolean value and its count
+    most_common, count = votes_counts.most_common(1)[0]
+    # calculate the percentage of the most common boolean value
+    percentage = (count / len(votes)) * 100
+    return most_common, percentage
 
 def broadcast_authority(authority_indices, primary_index):
     votes = {}
     for authority in authority_indices:
         votes[authority] = True
     votes = network_noise_simulation(authority_indices, votes, primary_index)
-    consensus_vote = authority_broadcast_consensus(votes)
+    consensus_vote, vote_percent = broadcast_majority_count(votes)
     logger.info(f"Consensus vote is {consensus_vote}")
     votes[authority_indices[primary_index]] = True
     logger.debug(f"After adding primary vote {votes}")
+    return votes, consensus_vote, vote_percent
 
 def broadcast_followers(nodes, primary_index, authority_nodes):
     noise_ratio = round(random.uniform(0.3, 0.7), 4)
-    logger.info(f"Network noise in propagating to follower nodes {noise_ratio * 100}")
+    logger.info(f"Network noise in propagating to follower nodes {round(noise_ratio * 100, 2)}%")
     follower_nodes_votes = {}
     for node_id, node_data in nodes.items():
-        if node_data["is_full_node"] and node_id != authority_nodes[primary_index]:
+        if node_data["is_full_node"] and node_id != authority_nodes[primary_index] and node_data['is_authority'] != True:
             follower_nodes_votes[node_id] = True
     
     noise_threshold = len(follower_nodes_votes) * noise_ratio 
     entries = list(follower_nodes_votes.items())  
     random.shuffle(entries)  # Random shuffling
-
     for i in range(int(noise_threshold)):
         number, _ = entries[i]  
-        follower_nodes_votes[number] = False  
-    # print(follower_nodes_votes)
+        follower_nodes_votes[number] = False 
+    consensus_vote, vote_percent = broadcast_majority_count(follower_nodes_votes) 
+    return follower_nodes_votes, consensus_vote, vote_percent
 
+def broadcast_reward(nodes, auth_votes_map, followers_votes_map, auth_vote, authority_nodes, primary_index):
+    logger.debug("Rewarding in broadcast")
+    for node_id, vote in auth_votes_map.items():
+        if vote == auth_vote:
+            nodes[node_id]['reputation'] += BLOCK_REWARD
+            
+        elif vote != auth_vote:
+            nodes[node_id]['reputation'] -= PENALTY
+            if nodes[node_id]['reputation'] < AUTHORITY_THRESHOLD:
+                nodes[node_id]['is_authority'] = False
 
-genesis_block = Block(0,  str(_dt.datetime.now()), "Genesis Block",0)
+        elif node_id == authority_nodes[primary_index] and vote != auth_vote:
+            nodes[node_id]['reputation'] = nodes[node_id]['reputation'] + PRIMARY_REWARD - BLOCK_REWARD
 
-block_exists = {}
-block_hashes = {}
-block_parents = {}
-block_lengths = {}
-last_block = genesis_block
-block_exists[genesis_block.hash] = True
-block_hashes[0] = genesis_block.hash
+    for node_id, vote in followers_votes_map.items():
+        if vote == auth_vote:
+            nodes[node_id]['reputation'] += BLOCK_REWARD
+            if nodes[node_id]['reputation'] >= AUTHORITY_THRESHOLD and nodes[node_id]['promote_count'] < MAX_TRANSACTION_RATIO:
+                nodes[node_id]['is_authority'] = True
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='This simulates the Proof of Concept for the blockchain with Proof of Verified Authority Consensus')
@@ -352,6 +395,7 @@ if __name__ == '__main__':
             5: {"is_authority": True, "is_full_node": True, "reputation": 2550, "certificate": "cert", "device_id": 99, "promote_count": 1},
             }
     authority_nodes = get_authority_indices(nodes)
+    blockchain = Blockchain()
 
     if method == 'add':
 
@@ -396,12 +440,25 @@ if __name__ == '__main__':
                 state = state_file.read()
 
             primary_index = get_primary() % len(authority_nodes)
-            print(primary_index)
+            logger.debug(f"Authority Node {primary_index} has been chosen")
             set_primary(primary_index + 1)
-            logger.debug(authority_nodes)
-            broadcast_authority(authority_nodes, primary_index)
-            broadcast_followers(nodes, primary_index, authority_nodes)
+            logger.debug(f"Indices of authority nodes are {authority_nodes}")
+            auth_votes_map, auth_vote, auth_vote_percent = broadcast_authority(authority_nodes, primary_index)
+            follower_votes_map, follower_vote, follower_vote_percent = broadcast_followers(nodes, primary_index, authority_nodes)
+            broadcast_reward(nodes, auth_votes_map, follower_votes_map, auth_vote, authority_nodes, primary_index)
+            consensus_message = {False: "reject", True:"accept"}
+            logger.info(f"{round(auth_vote_percent, 2)}% are in consensus to {consensus_message[auth_vote]} the state change.")
+            # print(auth_vote_percent)
+            if(auth_vote_percent > 50 and auth_vote == True):
+                logger.info("The transaction has been added")
+                blockchain.add_block(json.loads(state))
+                chain = blockchain.display_chain()
+                for block in chain:
+                    print(json.dumps(block, indent=4))
+            else:
+                logger.warning("The transaction has not been added as it was not in majority consensus")
+
         except Exception as e:
             logger.error(e)
+
     # logger.debug(json.dumps(nodes, indent=4))
-    # print(block_hashes)

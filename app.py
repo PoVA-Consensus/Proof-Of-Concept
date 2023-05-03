@@ -34,7 +34,6 @@ def verify_certificate_chain(cert_data, trusted_data):
         # To verify the certificate
         # Returns None if the certificate can be validated
         store_ctx.verify_certificate()
-        print("inside")
         return True
 
     except Exception as e:
