@@ -39,6 +39,15 @@ from datetime import datetime
 
 class Block:
     def __init__(self, index, timestamp, data, previous_hash):
+        """
+        Initializes a new instance of 'Block'.
+
+        Args:
+            index
+            timestamp
+            data
+            previous_hash
+        """
         self.index = index
         self.timestamp = timestamp
         self.data = data
@@ -46,6 +55,12 @@ class Block:
         self.hash = self.calculate_hash()
 
     def calculate_hash(self):
+        """
+        Calculates the hash of the block.
+
+        Returns:
+            str: The calculated hash of the block.
+        """
         block_string = json.dumps(
         {
             "index": self.index,
@@ -58,6 +73,12 @@ class Block:
         return hashlib.sha256(block_string).hexdigest()
 
     def display_block(self):
+        """
+        Returns the dictionary representation of the block.
+
+        Returns:
+            dict: The block represented as a dictionary.
+        """
         return {
             "index": self.index,
             "timestamp": self.timestamp,
@@ -68,6 +89,13 @@ class Block:
 
 class Blockchain:
     def __init__(self, chain_file='chain.json', transaction_file='transaction.json'):
+        """
+        Initializes a new instance of 'Blockchain'.
+
+        Args:
+            chain_file (str): The path to the file storing the blockchain data (default: 'chain.json').
+            transaction_file (str): The path to the file storing the transaction data (default: 'transaction.json').
+        """
         self.chain_file = chain_file
         self.transaction_file = transaction_file
 
@@ -79,6 +107,9 @@ class Blockchain:
             self.create_genesis_block()
 
     def create_genesis_block(self):
+        """
+        Creates the genesis block of the blockchain.
+        """
         index = 0
         timestamp = str(datetime.now())
         data = "Genesis Block"
@@ -91,6 +122,12 @@ class Blockchain:
             json.dump(self.chain, f)
 
     def add_block(self, data):
+        """
+        Args:
+            data:
+
+        Returns:
+        """
         previous_block = self.chain[-1]
         previous_hash = previous_block['hash']
         index = previous_block['index'] + 1
@@ -133,6 +170,13 @@ class Node:
         self.promote_count = 0
     
     def display_node(obj):
+        """
+        Args:
+            obj:
+
+        Returns:
+
+        """
         node_json = json.dumps(obj.__dict__, default=dict)
         return node_json
     
@@ -203,11 +247,25 @@ class Node:
         # logger.debug(authority_node_indices)
 
     def check_votes(self, votes, all_auth_nodes):
+        """
+        Args:
+            votes:
+            all_auth_nodes:
+
+        Returns:
+        """
         if votes > len(all_auth_nodes)//2:
             return True
         return False
     
     def reward_follower_nodes(self, nodes, indices):
+        """
+        Args:
+            nodes:
+            indices:
+
+        Returns:
+        """
         for index in indices:
             # logger.debug((nodes[index])['reputation'])
             nodes[index]['reputation'] += BLOCK_REWARD
@@ -222,40 +280,80 @@ class Node:
         logger.info("The nodes that are in consensus with the Authority nodes have been rewarded")
     
     def update_reputation_by_authority_index(self, nodes, authority_index):
+        """
+        Args:
+            nodes:
+            authority_index:
+
+        Returns:
+        """
         for node_id, node_data in nodes.items():
             if node_id == authority_index:
                 node_data["reputation"] += PRIMARY_REWARD
 
     def penalize_authority(self, nodes, voted_indices):
+        """
+        Args:
+            nodes:
+            voted_indices:
+
+        Returns:
+        """
         for node_id, node_data in nodes.items():
             if node_data["is_authority"] and node_id not in voted_indices:
                 node_data["reputation"] -= PENALTY
                 logger.info(f"Node {node_id} is an Authority node and has been penalized: Reason: No vote in transaction")
         
-def get_primary():
-    if not os.path.exists('index.txt'):
-        return 0
-    with open('index.txt', 'r') as f:
-        return int(f.read().strip())
-    
-def set_primary(index):
-    with open('index.txt', 'w') as f:
-        f.write(str(index))
+    def get_primary():
+        """
+        Returns:
+        """
+        if not os.path.exists('index.txt'):
+            return 0
+        with open('index.txt', 'r') as f:
+            return int(f.read().strip())
+        
+    def set_primary(index):
+        """
+        Args:
+            index:
+        """
+        with open('index.txt', 'w') as f:
+            f.write(str(index))
 
-def authority_verify(index, cert_data):
-    chain_response = requests.get(CA_CHAIN_URL)
-    logger.info(f"Authority node {index} is the primary node")
-    logger.info(f"Authority node {index} has retrieved the CA chain")
-    # print(chain_response.text)
-    verify_response = requests.post(VERIFY_URL, data={"certificate": cert_data, "trusted": chain_response.text})
-    # logger.info(verify_response.text)
-    return verify_response.text
+    def authority_verify(index, cert_data):
+        """
+        Args:
+            index:
+            cert_data:
 
-def get_authority_indices(nodes):
-    return [node_id for node_id, node_data in nodes.items() if node_data["is_authority"]]
+        Returns:
+        """
+        chain_response = requests.get(CA_CHAIN_URL)
+        logger.info(f"Authority node {index} is the primary node")
+        logger.info(f"Authority node {index} has retrieved the CA chain")
+        # print(chain_response.text)
+        verify_response = requests.post(VERIFY_URL, data={"certificate": cert_data, "trusted": chain_response.text})
+        # logger.info(verify_response.text)
+        return verify_response.text
+
+    def get_authority_indices(nodes):
+        """
+        Args:
+            nodes:
+
+        Returns:
+        """
+        return [node_id for node_id, node_data in nodes.items() if node_data["is_authority"]]
 
 
-def penalize_primary(nodes, index, follower_count):
+    def penalize_primary(nodes, index, follower_count):
+        """
+        Args:
+            nodes:
+            index:
+            follower_count:
+        """
         nodes[index]['reputation'] = nodes[index]['reputation'] - PENALTY
         logger.info("The Authority node has been penalized")
         if nodes[index]['reputation'] < AUTHORITY_THRESHOLD :
@@ -263,112 +361,164 @@ def penalize_primary(nodes, index, follower_count):
             logger.info("The Authority Node has fell below the threshold and has been removed from the network")
             follower_count -= 1
 
-def authority_voting(nodes):
-    authority_node_votes = {}
-    votes_true = 0
-    votes_false = 0
-    logger.info("Verification and voting by authority nodes have begun")
-    for node_id, node_data in nodes.items():
+    def authority_voting(nodes):
+        """
+        Args:
+            nodes:
+        """
+        authority_node_votes = {}
+        votes_true = 0
+        votes_false = 0
+        logger.info("Verification and voting by authority nodes have begun")
+        for node_id, node_data in nodes.items():
 
-        if node_data["is_authority"]:
-            chain_response = requests.get(CA_CHAIN_URL)
-            logger.info(f"Node {node_id} has retrieved the CA chain")
-            # print(chain_response.text)
-            verify_response = requests.post(VERIFY_URL, data={"certificate": cert_data, "trusted": chain_response.text})
+            if node_data["is_authority"]:
+                chain_response = requests.get(CA_CHAIN_URL)
+                logger.info(f"Node {node_id} has retrieved the CA chain")
+                # print(chain_response.text)
+                verify_response = requests.post(VERIFY_URL, data={"certificate": cert_data, "trusted": chain_response.text})
 
-            # Check if the response was successful
-            if verify_response.status_code == 200:
-                if verify_response.text == "True":
-                    logger.info(f"Node {node_id} has verified the certificate. Response: The certificate is valid")
-                    votes_true += 1
-                    authority_node_votes[node_id] = "True"
+                # Check if the response was successful
+                if verify_response.status_code == 200:
+                    if verify_response.text == "True":
+                        logger.info(f"Node {node_id} has verified the certificate. Response: The certificate is valid")
+                        votes_true += 1
+                        authority_node_votes[node_id] = "True"
+                    else:
+                        logger.warning(f"Node {node_id} has verified the certificate. Response: The certificate is invalid")
+                        votes_false += 1
+                        authority_node_votes[node_id] = "False"
                 else:
-                    logger.warning(f"Node {node_id} has verified the certificate. Response: The certificate is invalid")
-                    votes_false += 1
-                    authority_node_votes[node_id] = "False"
-            else:
-                authority_node_votes[node_id] = "Fail"
-    # print(authority_node_votes)
-    if votes_true == votes_false >= len(authority_node_votes) // 2:
-        return None, []
-    elif votes_true > votes_false or votes_false > votes_true:
-        return votes_true > len(authority_node_votes) // 2, authority_node_votes.keys()
-    return None, []           
+                    authority_node_votes[node_id] = "Fail"
+        # print(authority_node_votes)
+        if votes_true == votes_false >= len(authority_node_votes) // 2:
+            return None, []
+        elif votes_true > votes_false or votes_false > votes_true:
+            return votes_true > len(authority_node_votes) // 2, authority_node_votes.keys()
+        return None, []           
 
-def remove_primary_entry(votes, primary_index):
-    # Need this function to ensure that primary node entry is not set to false
-    items = list(votes.items())
-    del items[primary_index]
-    return dict(items)
+    def remove_primary_entry(votes, primary_index):
+        """
+        Args:
+            votes:
+            primary_index:
 
-def network_noise_simulation(authority_indices, votes, primary_index, noise_flag):
-    noise_ratio = round(random.uniform(0.3, 0.7), 4) if noise_flag == -1 else noise_flag
-    logger.info(f"There is a network noise of {round((noise_ratio * 100), 4)}%")
-    noise_threshold = len(authority_indices) * noise_ratio    # Setting a noise factor
-    votes = remove_primary_entry(votes, primary_index)
-    entries = list(votes.items())  # Convert the dictionary into a list of tuples
-    random.shuffle(entries)  # Random shuffling
-    for i in range(int(noise_threshold)):
-        number, _ = entries[i]  
-        votes[number] = False  
-    logger.debug(f"Noised authority nodes {votes}")
-    return votes
+        Returns:
+        """
+        # Need this function to ensure that primary node entry is not set to false
+        items = list(votes.items())
+        del items[primary_index]
+        return dict(items)
 
-def broadcast_majority_count(votes):
-    votes_counts = Counter(votes.values())
-    # get the most common boolean value and its count
-    most_common, count = votes_counts.most_common(1)[0]
-    # calculate the percentage of the most common boolean value
-    percentage = (count / len(votes)) * 100
-    return most_common, percentage
+    def network_noise_simulation(authority_indices, votes, primary_index, noise_flag):
+        """
+        Args:
+            authority_indices:
+            votes:
+            primary_index:
+            noise_flag:
 
-def broadcast_authority(authority_indices, primary_index, noise_flag):
-    votes = {}
-    for authority in authority_indices:
-        votes[authority] = True
-    votes = network_noise_simulation(authority_indices, votes, primary_index, noise_flag)
-    consensus_vote, vote_percent = broadcast_majority_count(votes)
-    logger.info(f"Consensus vote is {consensus_vote}")
-    votes[authority_indices[primary_index]] = True
-    logger.debug(f"After adding primary vote {votes}")
-    return votes, consensus_vote, vote_percent
+        Returns:
+        """
+        noise_ratio = round(random.uniform(0.3, 0.7), 4) if noise_flag == -1 else noise_flag
+        logger.info(f"There is a network noise of {round((noise_ratio * 100), 4)}%")
+        noise_threshold = len(authority_indices) * noise_ratio    # Setting a noise factor
+        votes = remove_primary_entry(votes, primary_index)
+        entries = list(votes.items())  # Convert the dictionary into a list of tuples
+        random.shuffle(entries)  # Random shuffling
+        for i in range(int(noise_threshold)):
+            number, _ = entries[i]  
+            votes[number] = False  
+        logger.debug(f"Noised authority nodes {votes}")
+        return votes
 
-def broadcast_followers(nodes, primary_index, authority_nodes, noise_flag):
-    noise_ratio = round(random.uniform(0.3, 0.7), 4) if noise_flag == -1 else noise_flag
-    logger.info(f"Network noise in propagating to follower nodes {round(noise_ratio * 100, 2)}%")
-    follower_nodes_votes = {}
-    for node_id, node_data in nodes.items():
-        if node_data["is_full_node"] and node_id != authority_nodes[primary_index] and node_data['is_authority'] != True:
-            follower_nodes_votes[node_id] = True
-    
-    noise_threshold = len(follower_nodes_votes) * noise_ratio 
-    entries = list(follower_nodes_votes.items())  
-    random.shuffle(entries)  # Random shuffling
-    for i in range(int(noise_threshold)):
-        number, _ = entries[i]  
-        follower_nodes_votes[number] = False 
-    consensus_vote, vote_percent = broadcast_majority_count(follower_nodes_votes) 
-    return follower_nodes_votes, consensus_vote, vote_percent
+    def broadcast_majority_count(votes):
+        """
+        Args:
+            votes:
 
-def broadcast_reward(nodes, auth_votes_map, followers_votes_map, auth_vote, authority_nodes, primary_index):
-    logger.debug("Rewarding in broadcast")
-    for node_id, vote in auth_votes_map.items():
-        if vote == auth_vote:
-            nodes[node_id]['reputation'] += BLOCK_REWARD
-            
-        elif vote != auth_vote:
-            nodes[node_id]['reputation'] -= PENALTY
-            if nodes[node_id]['reputation'] < AUTHORITY_THRESHOLD:
-                nodes[node_id]['is_authority'] = False
+        Returns:
+        """
+        votes_counts = Counter(votes.values())
+        # get the most common boolean value and its count
+        most_common, count = votes_counts.most_common(1)[0]
+        # calculate the percentage of the most common boolean value
+        percentage = (count / len(votes)) * 100
+        return most_common, percentage
 
-        elif node_id == authority_nodes[primary_index] and vote != auth_vote:
-            nodes[node_id]['reputation'] = nodes[node_id]['reputation'] + PRIMARY_REWARD - BLOCK_REWARD
+    def broadcast_authority(authority_indices, primary_index, noise_flag):
+        """
+        Args:
+            authority_indices:
+            primary_index:
+            noise_flag:
 
-    for node_id, vote in followers_votes_map.items():
-        if vote == auth_vote:
-            nodes[node_id]['reputation'] += BLOCK_REWARD
-            if nodes[node_id]['reputation'] >= AUTHORITY_THRESHOLD and nodes[node_id]['promote_count'] < MAX_TRANSACTION_RATIO:
-                nodes[node_id]['is_authority'] = True
+        Returns:
+        """
+        votes = {}
+        for authority in authority_indices:
+            votes[authority] = True
+        votes = network_noise_simulation(authority_indices, votes, primary_index, noise_flag)
+        consensus_vote, vote_percent = broadcast_majority_count(votes)
+        logger.info(f"Consensus vote is {consensus_vote}")
+        votes[authority_indices[primary_index]] = True
+        logger.debug(f"After adding primary vote {votes}")
+        return votes, consensus_vote, vote_percent
+
+    def broadcast_followers(nodes, primary_index, authority_nodes, noise_flag):
+        """
+        Args:
+            nodes:
+            primary_index:
+            authority_nodes:
+            noise_flag:
+
+        Returns:
+        """
+        noise_ratio = round(random.uniform(0.3, 0.7), 4) if noise_flag == -1 else noise_flag
+        logger.info(f"Network noise in propagating to follower nodes {round(noise_ratio * 100, 2)}%")
+        follower_nodes_votes = {}
+        for node_id, node_data in nodes.items():
+            if node_data["is_full_node"] and node_id != authority_nodes[primary_index] and node_data['is_authority'] != True:
+                follower_nodes_votes[node_id] = True
+        
+        noise_threshold = len(follower_nodes_votes) * noise_ratio 
+        entries = list(follower_nodes_votes.items())  
+        random.shuffle(entries)  # Random shuffling
+        for i in range(int(noise_threshold)):
+            number, _ = entries[i]  
+            follower_nodes_votes[number] = False 
+        consensus_vote, vote_percent = broadcast_majority_count(follower_nodes_votes) 
+        return follower_nodes_votes, consensus_vote, vote_percent
+
+    def broadcast_reward(nodes, auth_votes_map, followers_votes_map, auth_vote, authority_nodes, primary_index):
+        """
+        Args:
+            nodes:
+            auth_votes_map:
+            followers_votes_map:
+            auth_vote:
+            authority_nodes:
+            primary_index:
+        """
+        logger.debug("Rewarding in broadcast")
+        for node_id, vote in auth_votes_map.items():
+            if vote == auth_vote:
+                nodes[node_id]['reputation'] += BLOCK_REWARD
+                
+            elif vote != auth_vote:
+                nodes[node_id]['reputation'] -= PENALTY
+                if nodes[node_id]['reputation'] < AUTHORITY_THRESHOLD:
+                    nodes[node_id]['is_authority'] = False
+
+            elif node_id == authority_nodes[primary_index] and vote != auth_vote:
+                nodes[node_id]['reputation'] = nodes[node_id]['reputation'] + PRIMARY_REWARD - BLOCK_REWARD
+
+        for node_id, vote in followers_votes_map.items():
+            if vote == auth_vote:
+                nodes[node_id]['reputation'] += BLOCK_REWARD
+                if nodes[node_id]['reputation'] >= AUTHORITY_THRESHOLD and nodes[node_id]['promote_count'] < MAX_TRANSACTION_RATIO:
+                    nodes[node_id]['is_authority'] = True
 
 
 if __name__ == '__main__':
