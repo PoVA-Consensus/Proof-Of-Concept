@@ -3,3 +3,5 @@ logs/
 test/
 index.txt
 chain.json
+nodes_init.json
+nodes.json

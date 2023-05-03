@@ -169,7 +169,6 @@ class Node:
             return False
 
         for node_id, node_data in nodes.items():
-
             if node_data["is_full_node"] and node_data["is_authority"] == False:
                 chain_response = requests.get(CA_CHAIN_URL)
                 logger.info(f"Node {node_id} has retrieved the CA chain")
@@ -191,6 +190,8 @@ class Node:
             nodes[len(nodes)] = json.loads(self.display_node())
             logger.info(f"Device with device ID {device_id} added to the network")
             
+        elif auth_vote == False:
+            logger.info("Node cannot be added as majority of authority nodes have voted that the certificate is invalid")
         else:
             logger.info("Node cannot be added as majority vote not attained")
 
@@ -287,7 +288,7 @@ def authority_voting(nodes):
                     authority_node_votes[node_id] = "False"
             else:
                 authority_node_votes[node_id] = "Fail"
-    
+    # print(authority_node_votes)
     if votes_true == votes_false >= len(authority_node_votes) // 2:
         return None, []
     elif votes_true > votes_false or votes_false > votes_true:
@@ -300,8 +301,8 @@ def remove_primary_entry(votes, primary_index):
     del items[primary_index]
     return dict(items)
 
-def network_noise_simulation(authority_indices, votes, primary_index):
-    noise_ratio = round(random.uniform(0.3, 0.7), 4)
+def network_noise_simulation(authority_indices, votes, primary_index, noise_flag):
+    noise_ratio = round(random.uniform(0.3, 0.7), 4) if noise_flag == -1 else noise_flag
     logger.info(f"There is a network noise of {round((noise_ratio * 100), 4)}%")
     noise_threshold = len(authority_indices) * noise_ratio    # Setting a noise factor
     votes = remove_primary_entry(votes, primary_index)
@@ -321,19 +322,19 @@ def broadcast_majority_count(votes):
     percentage = (count / len(votes)) * 100
     return most_common, percentage
 
-def broadcast_authority(authority_indices, primary_index):
+def broadcast_authority(authority_indices, primary_index, noise_flag):
     votes = {}
     for authority in authority_indices:
         votes[authority] = True
-    votes = network_noise_simulation(authority_indices, votes, primary_index)
+    votes = network_noise_simulation(authority_indices, votes, primary_index, noise_flag)
     consensus_vote, vote_percent = broadcast_majority_count(votes)
     logger.info(f"Consensus vote is {consensus_vote}")
     votes[authority_indices[primary_index]] = True
     logger.debug(f"After adding primary vote {votes}")
     return votes, consensus_vote, vote_percent
 
-def broadcast_followers(nodes, primary_index, authority_nodes):
-    noise_ratio = round(random.uniform(0.3, 0.7), 4)
+def broadcast_followers(nodes, primary_index, authority_nodes, noise_flag):
+    noise_ratio = round(random.uniform(0.3, 0.7), 4) if noise_flag == -1 else noise_flag
     logger.info(f"Network noise in propagating to follower nodes {round(noise_ratio * 100, 2)}%")
     follower_nodes_votes = {}
     for node_id, node_data in nodes.items():
@@ -379,23 +380,22 @@ if __name__ == '__main__':
     parser.add_argument('--deviceid', type=str, help='This argument specifies the device ID')
     parser.add_argument('--node', type=int, help='This argument specifies the node index for the viewnode method')
     parser.add_argument('--state', type=str, help='This argument specifies the path to payload file containing the state')
-
+    parser.add_argument('--start', action='store_true', help='This flag indicates to start a new a new blockchain')
+    parser.add_argument('--cpath', type=str, help='This argument takes in the path to store the chain persistently', default="chain.json")
+    parser.add_argument('--src_nodes', type=str, help='This argument takes in the path that contains the pre-added nodes', default="nodes_init.json")
+    parser.add_argument('--dest_nodes', type=str, help='This argument takes in the path to store the newly added or updated nodes', default="nodes.json")
+    parser.add_argument('--max_noise', type=float, help='This argument takes the maximum permissable network noise for broadcast [value between 0-1]', default=-1)
     # parse arguments
     args = parser.parse_args()
-
     # access values of arguments
     method = args.method
+    
+    with open(args.src_nodes, 'r') as f:
+        nodes_json = json.load(f)
+    
+    nodes = {int(node_id): node_data for node_id, node_data in nodes_json.items()}
 
-    nodes = {
-            0: {"is_authority": False, "is_full_node": True, "reputation": 900, "certificate": "cert", "device_id": 49, "promote_count": 1},
-            1: {"is_authority": True, "is_full_node": True, "reputation": 1200, "certificate": "cert", "device_id": 44, "promote_count": 1},
-            2: {"is_authority": True, "is_full_node": True, "reputation": 1750, "certificate": "cert", "device_id": 45, "promote_count": 1},
-            3: {"is_authority": True, "is_full_node": True, "reputation": 1500, "certificate": "cert", "device_id": 54, "promote_count": 1},
-            4: {"is_authority": False, "is_full_node": False, "reputation": 50, "certificate": "cert", "device_id": 79, "promote_count": 0},
-            5: {"is_authority": True, "is_full_node": True, "reputation": 2550, "certificate": "cert", "device_id": 99, "promote_count": 1},
-            }
     authority_nodes = get_authority_indices(nodes)
-    blockchain = Blockchain()
 
     if method == 'add':
 
@@ -433,24 +433,28 @@ if __name__ == '__main__':
 
     elif method == 'broadcast':
         state_path = args.state
+        
         if state_path == None:
             logger.error("The state payload file is missing")
         try:
             with open(state_path, "r") as state_file:
                 state = state_file.read()
-
+            if (args.start == True):
+                open(args.cpath, "w").close()
+            blockchain = Blockchain(args.cpath)
             primary_index = get_primary() % len(authority_nodes)
             logger.debug(f"Authority Node {primary_index} has been chosen")
             set_primary(primary_index + 1)
             logger.debug(f"Indices of authority nodes are {authority_nodes}")
-            auth_votes_map, auth_vote, auth_vote_percent = broadcast_authority(authority_nodes, primary_index)
-            follower_votes_map, follower_vote, follower_vote_percent = broadcast_followers(nodes, primary_index, authority_nodes)
+            auth_votes_map, auth_vote, auth_vote_percent = broadcast_authority(authority_nodes, primary_index, args.max_noise)
+            follower_votes_map, follower_vote, follower_vote_percent = broadcast_followers(nodes, primary_index, authority_nodes, args.max_noise)
             broadcast_reward(nodes, auth_votes_map, follower_votes_map, auth_vote, authority_nodes, primary_index)
             consensus_message = {False: "reject", True:"accept"}
             logger.info(f"{round(auth_vote_percent, 2)}% are in consensus to {consensus_message[auth_vote]} the state change.")
             # print(auth_vote_percent)
             if(auth_vote_percent > 50 and auth_vote == True):
                 logger.info("The transaction has been added")
+                
                 blockchain.add_block(json.loads(state))
                 chain = blockchain.display_chain()
                 for block in chain:
@@ -460,5 +464,8 @@ if __name__ == '__main__':
 
         except Exception as e:
             logger.error(e)
+        
+    with open(args.dest_nodes, 'w') as f:
+        json.dump(nodes, f)
 
     # logger.debug(json.dumps(nodes, indent=4))
