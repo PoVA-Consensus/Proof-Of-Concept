@@ -124,7 +124,7 @@ class Blockchain:
     def add_block(self, data):
         """
         Args:
-            data: The state broadcasted to be added to the blockchain if permitted
+            data: The state broadcasted to be added to the blockchain if agreed upon by the authority nodes
         Returns:
             bool: Returns bool depending on if the previous hash of the new block causes a mismatch
         """
@@ -151,17 +151,20 @@ authority_nodes = {}
 authority_count = 0
 follower_count = 0
 current_primary = None
-AUTHORITY_THRESHOLD = 1000
+AUTHORITY_THRESHOLD = 1000  # The Threshold required for a follower node to be promoted to an authority node
 primary_index = 0
-BLOCK_REWARD = 100
-PRIMARY_REWARD = 250
-PENALTY = 450
-MAX_TRANSACTION_RATIO = 3
+BLOCK_REWARD = 100          # The reward given to every node if their vote was in consensus 
+PRIMARY_REWARD = 250        # The reward given to the primary authority
+PENALTY = 450               # Penalty for no voting in case of authority nodes
+MAX_TRANSACTION_RATIO = 3   # Maximum limit of promotions
 VERIFY_URL = "http://127.0.0.1:5000/verify-certificate"
 CA_CHAIN_URL = "http://127.0.0.1:8200/v1/pki/ca_chain"
 
 class Node:
     def __init__(self):
+        """
+        This constructor initializes all the attributes of Node object
+        """
         self.is_authority = False
         self.is_full_node = False
         self.reputation = 0
@@ -172,10 +175,10 @@ class Node:
     def display_node(obj):
         """
         Args:
-            obj:
+            obj: An object of the Node class
 
         Returns:
-
+            dict: The contents of the node in a dictionary format
         """
         node_json = json.dumps(obj.__dict__, default=dict)
         return node_json
@@ -248,11 +251,13 @@ class Node:
 
     def check_votes(self, votes, all_auth_nodes):
         """
+        This function checks if the vote count is more than 50% consensus.
         Args:
-            votes:
-            all_auth_nodes:
+            votes (int): The maximum votes attained
+            all_auth_nodes (list): The list containing the indices of all the authority nodes
 
         Returns:
+            bool: depending upon if they are more than 50% of the authority nodes
         """
         if votes > len(all_auth_nodes)//2:
             return True
@@ -261,10 +266,10 @@ class Node:
     def reward_follower_nodes(self, nodes, indices):
         """
         Args:
-            nodes:
-            indices:
-
-        Returns:
+            nodes (dict): A dictionary containing the data of all nodes added to the network
+            indices (list): The indices of the follower nodes that have voted in consensus with the authority nodes
+        Returns: 
+            None
         """
         for index in indices:
             # logger.debug((nodes[index])['reputation'])
@@ -281,9 +286,10 @@ class Node:
     
     def update_reputation_by_authority_index(self, nodes, authority_index):
         """
+        The function updates the reputation of the authority nodes that have voted in consensus.
         Args:
-            nodes:
-            authority_index:
+            nodes (dict): A dictionary containing the data of all nodes added to the network
+            authority_index (int): the index of the authority node with regard to nodes dictionary
 
         Returns:
         """
@@ -293,11 +299,13 @@ class Node:
 
     def penalize_authority(self, nodes, voted_indices):
         """
+        This function penalizes the authority node in instances of no vote.
         Args:
-            nodes:
-            voted_indices:
+            nodes (dict): A dictionary containing the data of all nodes added to the network
+            voted_indices (list): Indices of authority nodes that have voted in majority consensus
 
         Returns:
+            None
         """
         for node_id, node_data in nodes.items():
             if node_data["is_authority"] and node_id not in voted_indices:
@@ -306,7 +314,9 @@ class Node:
         
 def get_primary():
     """
+    This function returns the primary node index in a round robin fashion
     Returns:
+        None
     """
     if not os.path.exists('index.txt'):
         return 0
@@ -315,8 +325,9 @@ def get_primary():
     
 def set_primary(index):
     """
+    This function sets the index of the next primary authority node.
     Args:
-        index:
+        index (int): The index of the primary authority node
     """
     with open('index.txt', 'w') as f:
         f.write(str(index))
@@ -324,8 +335,8 @@ def set_primary(index):
 def authority_verify(index, cert_data):
     """
     Args:
-        index:
-        cert_data:
+        index (int): Index of the primary authority node
+        cert_data (str): The PEM-encoded certificate
 
     Returns:
     """
@@ -339,20 +350,23 @@ def authority_verify(index, cert_data):
 
 def get_authority_indices(nodes):
     """
+    This function returns the list of indices of authority nodes.
     Args:
-        nodes:
+        nodes (dict): A dictionary containing the data of all nodes added to the network
 
     Returns:
+     list: The list of indices of authority nodes with respect to the nodes dictionary
     """
     return [node_id for node_id, node_data in nodes.items() if node_data["is_authority"]]
 
 
 def penalize_primary(nodes, index, follower_count):
     """
+    This function penalizes the authority node if it fails to vote.
     Args:
-        nodes:
-        index:
-        follower_count:
+        nodes(dict): A dictionary containing the data of all nodes added to the network
+        index (int): The index of node
+        follower_count (int): Count of follower nodes
     """
     nodes[index]['reputation'] = nodes[index]['reputation'] - PENALTY
     logger.info("The Authority node has been penalized")
@@ -363,8 +377,11 @@ def penalize_primary(nodes, index, follower_count):
 
 def authority_voting(nodes):
     """
+    This function facilitates the voting of the authority nodes.
     Args:
-        nodes:
+        nodes(dict): A dictionary containing the data of all nodes added to the network
+    Returns:
+        bool or None, list of authority nodes
     """
     authority_node_votes = {}
     votes_true = 0
@@ -399,11 +416,13 @@ def authority_voting(nodes):
 
 def remove_primary_entry(votes, primary_index):
     """
+    This function removes the primary node from the list votes.
     Args:
-        votes:
-        primary_index:
+        votes (list): List of authority nodes
+        primary_index (list): Index of primary authority
 
     Returns:
+        dict: A dictionary of authority nodes without primary
     """
     # Need this function to ensure that primary node entry is not set to false
     items = list(votes.items())
@@ -412,13 +431,15 @@ def remove_primary_entry(votes, primary_index):
 
 def network_noise_simulation(authority_indices, votes, primary_index, noise_flag):
     """
+    This function simulates the network noise and prohibits certain nodes from voting.
     Args:
-        authority_indices:
-        votes:
-        primary_index:
-        noise_flag:
+        authority_indices (list): The indices of the authority nodes
+        votes (list): List of authority nodes that can vote
+        primary_index (int): Index of primary authority
+        noise_flag (flaot): The ratio of network noise [0-1]
 
     Returns:
+        votes (list): List of authority nodes after network noise impact
     """
     noise_ratio = round(random.uniform(0.3, 0.7), 4) if noise_flag == -1 else noise_flag
     logger.info(f"There is a network noise of {round((noise_ratio * 100), 4)}%")
@@ -434,10 +455,12 @@ def network_noise_simulation(authority_indices, votes, primary_index, noise_flag
 
 def broadcast_majority_count(votes):
     """
+    This function returns the majority vote and percentage of that vote.
     Args:
-        votes:
+        votes (list): List mapping node ID and vote
 
     Returns:
+        Majority vote and percentage of that vote
     """
     votes_counts = Counter(votes.values())
     # get the most common boolean value and its count
@@ -448,12 +471,13 @@ def broadcast_majority_count(votes):
 
 def broadcast_authority(authority_indices, primary_index, noise_flag):
     """
+    This function returns the votes mapping, the consensus vote and the vote percentage of the authorities
     Args:
-        authority_indices:
-        primary_index:
-        noise_flag:
-
+        authority_indices (list): Indices of authority nodes
+        primary_index (int): index of primary authority
+        noise_flag (float): Network noise ratio [0-1]
     Returns:
+        Votes mapping, the consensus vote and the vote percentage of the authorities
     """
     votes = {}
     for authority in authority_indices:
@@ -467,13 +491,15 @@ def broadcast_authority(authority_indices, primary_index, noise_flag):
 
 def broadcast_followers(nodes, primary_index, authority_nodes, noise_flag):
     """
+    This function returns the votes mapping, the consensus vote and the vote percentage of the followers
     Args:
-        nodes:
-        primary_index:
-        authority_nodes:
-        noise_flag:
+        nodes (dict): A dictionary containing the data of all nodes added to the network
+        primary_index (int): index of primary authority
+        authority_nodes (list): A list of authority nodes
+        noise_flag (float): Network noise ratio [0-1]
 
     Returns:
+        Votes mapping, the consensus vote and the vote percentage of the followers
     """
     noise_ratio = round(random.uniform(0.3, 0.7), 4) if noise_flag == -1 else noise_flag
     logger.info(f"Network noise in propagating to follower nodes {round(noise_ratio * 100, 2)}%")
@@ -493,13 +519,14 @@ def broadcast_followers(nodes, primary_index, authority_nodes, noise_flag):
 
 def broadcast_reward(nodes, auth_votes_map, followers_votes_map, auth_vote, authority_nodes, primary_index):
     """
+    This function rewards/penalizes the nodes after a state change.
     Args:
-        nodes:
-        auth_votes_map:
-        followers_votes_map:
-        auth_vote:
-        authority_nodes:
-        primary_index:
+        nodes (dict): A dictionary containing the data of all nodes added to the network
+        auth_votes_map (dict): A dictionary mapping the authority index and their vote
+        followers_votes_map (dict): A dictionary mapping the follower index and their vote
+        auth_vote (bool): Vote of the authority nodes in consensus
+        authority_nodes (list): A list of authority nodes
+        primary_index (int): index of primary authority
     """
     logger.debug("Rewarding in broadcast")
     for node_id, vote in auth_votes_map.items():
@@ -591,16 +618,20 @@ if __name__ == '__main__':
                 state = state_file.read()
             if (args.start == True):
                 open(args.cpath, "w").close()
+
             blockchain = Blockchain(args.cpath)
             primary_index = get_primary() % len(authority_nodes)
             logger.debug(f"Authority Node {primary_index} has been chosen")
+
             set_primary(primary_index + 1)
             logger.debug(f"Indices of authority nodes are {authority_nodes}")
             auth_votes_map, auth_vote, auth_vote_percent = broadcast_authority(authority_nodes, primary_index, args.max_noise)
             follower_votes_map, follower_vote, follower_vote_percent = broadcast_followers(nodes, primary_index, authority_nodes, args.max_noise)
+
             broadcast_reward(nodes, auth_votes_map, follower_votes_map, auth_vote, authority_nodes, primary_index)
             consensus_message = {False: "reject", True:"accept"}
             logger.info(f"{round(auth_vote_percent, 2)}% are in consensus to {consensus_message[auth_vote]} the state change.")
+
             # print(auth_vote_percent)
             if(auth_vote_percent > 50 and auth_vote == True):
                 logger.info("The transaction has been added")
@@ -617,5 +648,4 @@ if __name__ == '__main__':
         
     with open(args.dest_nodes, 'w') as f:
         json.dump(nodes, f)
-
     # logger.debug(json.dumps(nodes, indent=4))
